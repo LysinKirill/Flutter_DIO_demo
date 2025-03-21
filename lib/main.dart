@@ -34,6 +34,8 @@ class _FileUploadScreenState extends State<FileUploadScreen> with SingleTickerPr
   bool _showSuccess = false;
   bool _showError = false;
   String _errorMessage = '';
+  CancelToken _cancelToken = CancelToken(); // For canceling uploads
+  String _cachedData = ''; // To display cached data
 
   late AnimationController _animationController;
   late Animation<double> _fadeAnimation;
@@ -51,8 +53,14 @@ class _FileUploadScreenState extends State<FileUploadScreen> with SingleTickerPr
   @override
   void dispose() {
     _animationController.dispose();
+    _cancelToken.cancel(); // Cancel any ongoing requests
     super.dispose();
   }
+
+  void _resetCancelToken() {
+    _cancelToken = CancelToken();
+  }
+
 
   Future<void> _pickFile() async {
     FilePickerResult? result = await FilePicker.platform.pickFiles();
@@ -69,6 +77,16 @@ class _FileUploadScreenState extends State<FileUploadScreen> with SingleTickerPr
     }
 
     Dio dio = Dio();
+
+    // Add logging interceptor
+    dio.interceptors.add(LogInterceptor(
+      request: true,
+      requestHeader: true,
+      requestBody: true,
+      responseHeader: true,
+      responseBody: true,
+      error: true,
+    ));
 
     setState(() {
       _isUploading = true;
@@ -91,6 +109,7 @@ class _FileUploadScreenState extends State<FileUploadScreen> with SingleTickerPr
             _uploadProgress = sent / total;
           });
         },
+        cancelToken: _cancelToken, // Add cancel token
       );
 
       if (response.statusCode == 200) {
@@ -123,9 +142,11 @@ class _FileUploadScreenState extends State<FileUploadScreen> with SingleTickerPr
     } on DioError catch (e) {
       String? errorMessage;
       if (e.type == DioErrorType.connectTimeout) {
-          errorMessage = 'Upload failed: Connection timeout';
+        errorMessage = 'Upload failed: Connection timeout';
       } else if (e.type == DioErrorType.other) {
-          errorMessage = 'Upload failed: No internet connection';
+        errorMessage = 'Upload failed: No internet connection';
+      } else if (e.type == DioErrorType.cancel) {
+        errorMessage = 'Upload canceled by user';
       } else {
         errorMessage = 'Upload failed: ${e.message}';
       }
@@ -154,6 +175,31 @@ class _FileUploadScreenState extends State<FileUploadScreen> with SingleTickerPr
           _showError = false;
           _animationController.reset();
         });
+      });
+    } finally {
+      _resetCancelToken(); // Reset the CancelToken after the request is done
+    }
+  }
+
+  // Fetch cached data
+  Future<void> _fetchCachedData() async {
+    Dio dio = Dio();
+
+    // Add caching interceptor
+    dio.interceptors.add(DioCacheManager(CacheConfig(baseUrl: 'https://jsonplaceholder.typicode.com')).interceptor);
+
+        try {
+        Response response = await dio.get(
+        'https://jsonplaceholder.typicode.com/posts/1',
+        options: buildCacheOptions(Duration(minutes: 1)), // Cache for 1 minute
+        );
+
+        setState(() {
+        _cachedData = 'Cached Data: ${response.data['title']}';
+        });
+        } catch (e) {
+      setState(() {
+        _cachedData = 'Failed to fetch cached data: $e';
       });
     }
   }
@@ -255,10 +301,9 @@ class _FileUploadScreenState extends State<FileUploadScreen> with SingleTickerPr
             child: Text(
               'Dio File Uploader',
               style: TextStyle(
-                color: Colors.white,
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-              ),
+                  color: Colors.white,
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold),
             ),
           ),
         ),
@@ -294,6 +339,21 @@ class _FileUploadScreenState extends State<FileUploadScreen> with SingleTickerPr
                   ),
                 ),
               ),
+              SizedBox(height: 20),
+              if (_isUploading)
+                ElevatedButton.icon(
+                  onPressed: () {
+                    _cancelToken.cancel('Upload canceled by user');
+                  },
+                  icon: Icon(Icons.cancel),
+                  label: Text('Cancel Upload'),
+                  style: ElevatedButton.styleFrom(
+                    padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                  ),
+                ),
               SizedBox(height: 20),
               LinearProgressIndicator(
                 value: _uploadProgress,
@@ -356,6 +416,20 @@ class _FileUploadScreenState extends State<FileUploadScreen> with SingleTickerPr
                     ),
                   ),
                 ),
+              SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: _fetchCachedData,
+                icon: Icon(Icons.cached),
+                label: Text('Fetch Cached Data'),
+                style: ElevatedButton.styleFrom(
+                  padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              SizedBox(height: 10),
+              Text(_cachedData),
             ],
           ),
         ),
