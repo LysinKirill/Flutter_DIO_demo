@@ -1,7 +1,8 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:dio_http_cache/dio_http_cache.dart';
 
 void main() {
@@ -30,7 +31,6 @@ class _FileUploadScreenState extends State<FileUploadScreen> {
   String? _filePath;
   double _uploadProgress = 0.0;
   String _uploadStatus = '';
-  //String uploadUrl = 'https://run.mocky.io/v3/cb43b209-3eb1-431a-8ed1-e8e1338a0008';
   String uploadUrl = 'https://run.mocky.io/v3/9dc5cd17-28fa-4034-846e-36368eba39d5';
 
   Future<void> _pickFile() async {
@@ -47,8 +47,6 @@ class _FileUploadScreenState extends State<FileUploadScreen> {
     }
   }
 
-
-
   Future<void> _uploadFile() async {
     if (_filePath == null) {
       setState(() {
@@ -58,7 +56,6 @@ class _FileUploadScreenState extends State<FileUploadScreen> {
     }
 
     Dio dio = Dio();
-    String uploadUrl = 'https://run.mocky.io/v3/6325fac0-e88a-4cad-bc68-9f35707fa8d1';
 
     try {
       FormData formData = FormData.fromMap({
@@ -69,8 +66,6 @@ class _FileUploadScreenState extends State<FileUploadScreen> {
         _uploadStatus = 'Uploading...';
         _uploadProgress = 0.0;
       });
-
-      print('Selected file path: $_filePath');
 
       Response response = await dio.post(
         uploadUrl,
@@ -83,11 +78,6 @@ class _FileUploadScreenState extends State<FileUploadScreen> {
         },
       );
 
-      print('Response: $response');
-      print('Status Code: ${response.statusCode}');
-      print('Response Data: ${response.data}');
-
-      // Check the response status code
       if (response.statusCode == 200) {
         setState(() {
           _uploadStatus = 'Upload complete! Response: ${response.data}';
@@ -98,7 +88,6 @@ class _FileUploadScreenState extends State<FileUploadScreen> {
         });
       }
     } on DioError catch (e) {
-      // Handle Dio-specific errors
       if (e.response != null) {
         setState(() {
           _uploadStatus = 'Upload failed: Server error - ${e.response?.statusCode}';
@@ -117,37 +106,161 @@ class _FileUploadScreenState extends State<FileUploadScreen> {
         });
       }
     } catch (e) {
-      // Handle other errors
       setState(() {
         _uploadStatus = 'Upload failed: $e';
       });
     }
   }
 
+  Widget _buildFilePreview() {
+    if (_filePath == null) {
+      return Container(
+        margin: EdgeInsets.symmetric(vertical: 20),
+        child: Text(
+          'No file selected.',
+          style: TextStyle(color: Colors.grey),
+        ),
+      );
+    }
+
+    String fileExtension = _filePath!.split('.').last.toLowerCase();
+
+    switch (fileExtension) {
+      case 'txt':
+        return FutureBuilder<String>(
+          future: _readTextFile(_filePath!),
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return CircularProgressIndicator();
+            } else if (snapshot.hasError) {
+              return Text('Error reading file: ${snapshot.error}');
+            } else {
+              return Container(
+                margin: EdgeInsets.symmetric(vertical: 20),
+                padding: EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.blue),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  snapshot.data ?? 'No content',
+                  maxLines: 5,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              );
+            }
+          },
+        );
+      case 'png':
+      case 'jpg':
+      case 'jpeg':
+        return Container(
+          margin: EdgeInsets.symmetric(vertical: 20),
+          height: 150,
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.blue),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: Image.file(
+              File(_filePath!),
+              fit: BoxFit.cover,
+            ),
+          ),
+        );
+      case 'pdf':
+        return Container(
+          margin: EdgeInsets.symmetric(vertical: 20),
+          padding: EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            border: Border.all(color: Colors.blue),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Text(
+            'PDF file selected. Preview not supported.',
+            style: TextStyle(color: Colors.grey),
+          ),
+        );
+      default:
+        return Container(
+          margin: EdgeInsets.symmetric(vertical: 20),
+          child: Text(
+            'Unsupported file type.',
+            style: TextStyle(color: Colors.grey),
+          ),
+        );
+    }
+  }
+
+  Future<String> _readTextFile(String path) async {
+    return await File(path).readAsString();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('Dio File Uploader'),
+        title: Center(
+          child: Container(
+            padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+            decoration: BoxDecoration(
+              color: Colors.blue,
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: Text(
+              'Dio File Uploader',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 20,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          children: [
-            ElevatedButton(
-              onPressed: _pickFile,
-              child: Text('Select File'),
-            ),
-            SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: _uploadFile,
-              child: Text('Upload File'),
-            ),
-            SizedBox(height: 20),
-            LinearProgressIndicator(value: _uploadProgress),
-            SizedBox(height: 20),
-            Text(_uploadStatus),
-          ],
+      body: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildFilePreview(),
+              SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: _pickFile,
+                icon: Icon(Icons.attach_file),
+                label: Text('Select File'),
+                style: ElevatedButton.styleFrom(
+                  padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              SizedBox(height: 20),
+              ElevatedButton.icon(
+                onPressed: _uploadFile,
+                icon: Icon(Icons.cloud_upload),
+                label: Text('Upload File'),
+                style: ElevatedButton.styleFrom(
+                  padding: EdgeInsets.symmetric(horizontal: 30, vertical: 15),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                ),
+              ),
+              SizedBox(height: 20),
+              LinearProgressIndicator(value: _uploadProgress),
+              SizedBox(height: 20),
+              Text(
+                _uploadStatus,
+                style: TextStyle(
+                  color: _uploadStatus.contains('failed') ? Colors.red : Colors.green,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
